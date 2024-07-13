@@ -21,6 +21,8 @@
 
 #include "cmd.h"
 
+#include "camera_helpers.h"
+
 static const char *TAG = "HTTP";
 
 extern QueueHandle_t xQueueCmd;
@@ -89,9 +91,21 @@ esp_err_t Image2Base64(char * filename, size_t fsize, unsigned char * base64_buf
 	return ret;
 }
 
+
+// Convert image to BASE64
+esp_err_t Image2Base64FromRAM(unsigned char * base64_buffer, size_t base64_buffer_len, unsigned char* image_buffer, size_t image_buffer_size)
+{
+	size_t encord_len;
+	esp_err_t ret = mbedtls_base64_encode(base64_buffer, base64_buffer_len, &encord_len, image_buffer, image_buffer_size);
+	ESP_LOGI(TAG, "mbedtls_base64_encode=%d encord_len=%d", ret, encord_len);
+	return ret;
+}
+
 /* root get handler */
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
+
+	// Handle Show Image
 	ESP_LOGI(TAG, "root_get_handler");
 	if (localFileName == NULL) {
 		httpd_resp_sendstr_chunk(req, NULL);
@@ -140,6 +154,55 @@ static esp_err_t root_get_handler(httpd_req_t *req)
 
 	/* Send empty chunk to signal HTTP response completion */
 	httpd_resp_sendstr_chunk(req, NULL);
+	return ESP_OK;
+}
+
+
+
+/* root get handler */
+static esp_err_t root_get_handler_ram(httpd_req_t *req)
+{
+
+	camera_capture_RAM();
+
+	// Handle Show Image
+	ESP_LOGI(TAG, "root_get_handler_ram");
+
+	int32_t base64Size = calcBase64EncodedSize(fb->len);
+	ESP_LOGI(TAG, "base64Size=%"PRIi32, base64Size);
+
+	/* Send HTML file header */
+	httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html><body>");
+
+	// Convert from JPEG to BASE64
+	unsigned char*	img_src_buffer = NULL;
+	size_t img_src_buffer_len = base64Size + 1;
+	img_src_buffer = malloc(img_src_buffer_len);
+	if (img_src_buffer == NULL) {
+		ESP_LOGE(TAG, "malloc fail. img_src_buffer_len %d", img_src_buffer_len);
+	} else {
+		esp_err_t ret = Image2Base64FromRAM(img_src_buffer, img_src_buffer_len, fb->buf, fb->len);
+		ESP_LOGI(TAG, "Image2Base64=%d", ret);
+		if (ret != 0) {
+			ESP_LOGE(TAG, "Error in mbedtls encode! ret = -0x%x", -ret);
+		} else {
+			// <img src="data:image/jpeg;base64,ENCORDED_DATA" />
+			httpd_resp_sendstr_chunk(req, "<img src=\"data:image/jpeg;base64,");
+			httpd_resp_send_chunk(req, (char *)img_src_buffer, base64Size);
+			httpd_resp_sendstr_chunk(req, "\" />");
+		}
+	}
+	if (img_src_buffer != NULL) free(img_src_buffer);
+
+	/* Finish the file list table */
+	httpd_resp_sendstr_chunk(req, "</tbody></table>");
+
+	/* Send remaining chunk of HTML file to complete it */
+	httpd_resp_sendstr_chunk(req, "</body></html>");
+
+	/* Send empty chunk to signal HTTP response completion */
+	httpd_resp_sendstr_chunk(req, NULL);
+
 	return ESP_OK;
 }
 
@@ -195,7 +258,7 @@ esp_err_t start_server(int port)
 	httpd_uri_t _root_get_handler = {
 		.uri		 = "/",
 		.method		 = HTTP_GET,
-		.handler	 = root_get_handler,
+		.handler	 = root_get_handler_ram,
 		//.user_ctx  = "Hello World!"
 	};
 	httpd_register_uri_handler(server, &_root_get_handler);
