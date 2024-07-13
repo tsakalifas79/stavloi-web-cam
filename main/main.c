@@ -351,6 +351,10 @@ void tcp_server(void *pvParameters);
 void udp_server(void *pvParameters);
 #endif
 
+#if CONFIG_SHUTTER_AUTO
+void auto_shutter(void *pvParameters);
+#endif
+
 void http_task(void *pvParameters);
 
 void app_main(void)
@@ -367,7 +371,7 @@ void app_main(void)
 	wifi_init_sta();
 
 	// Initialize mDNS
-	initialise_mdns();
+	// initialise_mdns();
 
 #if CONFIG_REMOTE_IS_VARIABLE_NAME
 	// obtain time over NTP
@@ -438,6 +442,11 @@ void app_main(void)
 
 #if CONFIG_SHUTTER_HTTP
 #define SHUTTER "HTTP Request"
+#endif
+
+#if CONFIG_SHUTTER_AUTO
+#define SHUTTER "Automated"
+	xTaskCreate(auto_shutter, "auto", 1024*4, NULL, 2, NULL);
 #endif
 
 	/* Get the local IP address */
@@ -546,6 +555,7 @@ void app_main(void)
 		// Save Picture to Local file
 		int retryCounter = 0;
 		while(1) {
+			// if (cmdBuf.command != CMD_TAKE) break;
 			size_t pictureSize;
 			ret = camera_capture(requestBuf.localFileName, &pictureSize);
 			ESP_LOGI(TAG, "camera_capture=%d",ret);

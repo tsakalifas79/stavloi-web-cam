@@ -181,6 +181,8 @@ menu "Application Configuration"
 				bool "Use UDP Socket"
 			config SHUTTER_HTTP
 				bool "Use HTTP Request"
+			config SHUTTER_AUTO
+				bool "Use Automated Shutter"
 
 		endchoice
 
